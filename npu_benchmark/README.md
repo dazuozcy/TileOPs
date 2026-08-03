@@ -92,6 +92,8 @@ See `TopkSelectorOp` for a complete reference.
 ## Current ops
 
 - **TopkSelectorOp** — radix-based top-k index selection over `[B, S, S_kv, G]`.
+- **LerpTensorOp** — tensor-weight linear interpolation `out = input + weight * (end - input)`.
+- **MishFwdOp** — element-wise Mish activation `y = x * tanh(softplus(x))`.
 
 ### Kernel implementations
 
@@ -99,6 +101,10 @@ See `TopkSelectorOp` for a complete reference.
 |--------|------|---------|--------|
 | `TopkSelectorTorchKernel` | `kernels/topk_selector_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.topk` |
 | `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang (CUDA/future NPU) | Reference — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not yet supported by the TileLang Ascend backend |
+| `LerpTensorTorchKernel` | `kernels/lerp_tensor_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.lerp` |
+| `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (CUDA/future NPU) | Reference — uses register-fragment primitives (`alloc_fragment`, `T.copy`) not yet supported by the TileLang Ascend backend |
+| `MishTorchKernel` | `kernels/mish_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.tanh(softplus(x))` |
+| `MishKernel` | `kernels/mish.py` | TileLang (CUDA/future NPU) | Reference — uses register-fragment primitives (`alloc_fragment`, `T.copy`) not yet supported by the TileLang Ascend backend |
 
 The Op defaults to `TopkSelectorTorchKernel` so the framework runs end-to-end on NPU.
 To use the TileLang kernel (on a backend that supports it):
