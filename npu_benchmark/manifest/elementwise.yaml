@@ -1,0 +1,59 @@
+LerpTensorOp:
+  ref_api: "torch.lerp"
+  family: elementwise
+  status: implemented
+
+  signature:
+    inputs:
+      input: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+      end: {dtype: "same_as(input)", shape: "broadcast(input)"}
+      weight: {dtype: "same_as(input)", shape: "broadcast(input)"}
+    outputs:
+      output: {dtype: "same_as(input)", shape: "broadcast(input, end, weight)"}
+    shape_rules:
+    - "output.shape == broadcast_shapes(input.shape, end.shape, weight.shape)"
+
+  workloads:
+  - {input_shape: [4096, 4096], dtype: float32, label: "lerp-16M-f32"}
+  - {input_shape: [4096, 4096], dtype: float16, label: "lerp-16M-f16"}
+  - {input_shape: [16384, 16384], dtype: float16, label: "lerp-256M-f16"}
+
+  roofline:
+    func: "perf.formulas.lerp_tensor_roofline"
+
+  source:
+    kernel: kernels/lerp_tensor.py
+    kernel_map:
+      lerp_tensor_kernel: LerpTensorKernel
+    op: ops/lerp_tensor.py
+    test: tests/ops/test_lerp_tensor.py
+    bench: benchmarks/ops/bench_lerp_tensor.py
+
+MishFwdOp:
+  ref_api: "torch.nn.functional.mish"
+  family: elementwise
+  status: implemented
+
+  signature:
+    inputs:
+      input: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+    outputs:
+      output: {dtype: "same_as(input)", shape: "same_as(input)"}
+    shape_rules:
+    - "output.shape == input.shape"
+
+  workloads:
+  - {input_shape: [16, 256, 80, 80], dtype: float32, label: "mish-yolo-p3-f32"}
+  - {input_shape: [16, 256, 80, 80], dtype: float16, label: "mish-yolo-p3-f16"}
+  - {input_shape: [16, 512, 40, 40], dtype: float16, label: "mish-yolo-p4-f16"}
+
+  roofline:
+    func: "perf.formulas.mish_fwd_roofline"
+
+  source:
+    kernel: kernels/mish.py
+    kernel_map:
+      mish_kernel: MishKernel
+    op: ops/mish.py
+    test: tests/ops/test_mish.py
+    bench: benchmarks/ops/bench_mish.py

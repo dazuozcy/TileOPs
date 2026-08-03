@@ -41,6 +41,30 @@ def topk_selector_roofline(op) -> tuple[int, int]:
     return int(comparisons), int(nbytes)
 
 
+def lerp_tensor_roofline(op) -> tuple[int, int]:
+    """Roofline for ``LerpTensorOp`` (Tensor-weight ``torch.lerp``).
+
+    Per output element: 3 flops (sub + mul + add); 3 reads + 1 write at
+    post-broadcast ``N_total``.
+    """
+    n_total = int(op.N_total)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    return 3 * n_total, 4 * n_total * elem_bytes
+
+
+def mish_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``MishFwdOp`` (``torch.nn.functional.mish``).
+
+    Per output element: 4 flops (softplus = exp + log1p = 2;
+    tanh = 1; final mul = 1); 1 read + 1 write at ``N_total``.
+    """
+    n_total = int(op.N_total)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    return 4 * n_total, 2 * n_total * elem_bytes
+
+
 ROOFLINE_REGISTRY: dict[str, Callable] = {
     "topk_selector_roofline": topk_selector_roofline,
+    "lerp_tensor_roofline": lerp_tensor_roofline,
+    "mish_fwd_roofline": mish_fwd_roofline,
 }
