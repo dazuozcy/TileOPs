@@ -68,17 +68,14 @@ class Kernel(ABC):
         from tilelang.autotuner import autotune
 
         print(f"Start autotuning {self.__class__.__name__}...")
-        tunable_params = list(self.default_config.keys())
         kwargs: Dict[str, Any] = dict(
             configs=self.autotune_configs, warmup=warmup, rep=rep)
-        if tunable_params:
-            kwargs["do_not_specialize"] = tunable_params
         if self.autotune_supply_prog is not None:
             kwargs["supply_prog"] = self.autotune_supply_prog
 
         autotuned_fn = autotune(**kwargs)(self.kernel)
-        tuned = autotuned_fn(**self.default_config)
-        self.config = tuned.config
+        best_kernel = autotuned_fn()
+        self.config = best_kernel.config
         print(f"Best config: {self.config}")
 
     @staticmethod

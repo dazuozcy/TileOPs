@@ -49,8 +49,8 @@ def test_mish_bench(input_shape, dtype: torch.dtype) -> None:
     result = bm.profile(op, *inputs)
     BenchmarkReport.record(op, locals(), result, tag="kernel")
 
-    result_bl = bm.profile(test.ref_program, *inputs)
-    BenchmarkReport.record(op, locals(), result_bl, tag="torch")
+    # result_bl = bm.profile(test.ref_program, *inputs)
+    # BenchmarkReport.record(op, locals(), result_bl, tag="torch")
 
 
 if __name__ == "__main__":

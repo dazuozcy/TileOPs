@@ -26,6 +26,8 @@ from kernels.kernel_base import Kernel
 
 __all__ = ["LerpTensorKernel"]
 
+_NPU_MAX_CORE_DIM = 65535
+
 
 @functools.lru_cache(maxsize=32)
 def _make_lerp_tensor_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
@@ -35,14 +37,17 @@ def _make_lerp_tensor_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
         N: Number of elements (flat 1-D size, post-broadcast).
         dtype: Input dtype string (float16 / bfloat16 / float32).
         output_dtype: Output dtype string; defaults to ``dtype``.
-        threads: Threads per block.
-        npt: Elements per thread (vectorization factor).
+        threads: Threads per block (factory cache key; the runtime value is
+            passed to ``kernel`` via ``threads_arg``).
+        npt: Elements per thread (factory cache key; the runtime value is
+            passed to ``kernel`` via ``npt_arg``).
     """
     out_dtype = output_dtype or dtype
-    block_size = threads * npt
 
-    @tilelang.jit(out_idx=[3])
+    @tilelang.jit(out_idx=[3], target="npuir")
     def kernel(threads_arg, npt_arg):
+        block_size = threads_arg * npt_arg
+
         @T.prim_func
         def main(
             a: T.Tensor((N,), dtype),
@@ -50,17 +55,60 @@ def _make_lerp_tensor_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
             w: T.Tensor((N,), dtype),
             out: T.Tensor((N,), out_dtype),
         ):
-            with T.Kernel(T.ceildiv(N, block_size), threads=threads_arg) as bx:
-                a_reg = T.alloc_fragment((block_size,), dtype)
-                b_reg = T.alloc_fragment((block_size,), dtype)
-                w_reg = T.alloc_fragment((block_size,), dtype)
-                T.copy(a[bx * block_size : (bx + 1) * block_size], a_reg)
-                T.copy(b[bx * block_size : (bx + 1) * block_size], b_reg)
-                T.copy(w[bx * block_size : (bx + 1) * block_size], w_reg)
-                for i, j in T.Parallel(threads_arg, npt_arg):
-                    k = i * npt_arg + j
-                    a_reg[k] = a_reg[k] + w_reg[k] * (b_reg[k] - a_reg[k])
-                T.copy(a_reg, out[bx * block_size : (bx + 1) * block_size])
+            with T.Kernel(T.ceildiv(N, block_size), is_npu=True) as (cid, _):
+                tail_size = T.min(block_size, N - cid * block_size)
+
+                if dtype != "float32":
+                    # --- float16 / bfloat16 path: float32 intermediate ---
+                    a_ub = T.alloc_ub((block_size,), dtype)
+                    b_ub = T.alloc_ub((block_size,), dtype)
+                    w_ub = T.alloc_ub((block_size,), dtype)
+                    a_f32 = T.alloc_ub((block_size,), "float32")
+                    b_f32 = T.alloc_ub((block_size,), "float32")
+                    w_f32 = T.alloc_ub((block_size,), "float32")
+                    tmp_f32 = T.alloc_ub((block_size,), "float32")
+                    out_f32 = T.alloc_ub((block_size,), "float32")
+                    out_ub = T.alloc_ub((block_size,), out_dtype)
+
+                    T.copy(a[cid * block_size : cid * block_size + tail_size],
+                           a_ub[0:tail_size])
+                    T.copy(b[cid * block_size : cid * block_size + tail_size],
+                           b_ub[0:tail_size])
+                    T.copy(w[cid * block_size : cid * block_size + tail_size],
+                           w_ub[0:tail_size])
+
+                    T.vcast(a_ub, a_f32, round_mode="rint")
+                    T.vcast(b_ub, b_f32, round_mode="rint")
+                    T.vcast(w_ub, w_f32, round_mode="rint")
+
+                    T.vsub(b_f32, a_f32, tmp_f32)
+                    T.vmul(w_f32, tmp_f32, tmp_f32)
+                    T.vadd(a_f32, tmp_f32, out_f32)
+
+                    T.vcast(out_f32, out_ub, round_mode="round")
+                    T.copy(out_ub[0:tail_size],
+                           out[cid * block_size : cid * block_size + tail_size])
+                else:
+                    # --- float32 path: direct computation ---
+                    a_ub = T.alloc_ub((block_size,), "float32")
+                    b_ub = T.alloc_ub((block_size,), "float32")
+                    w_ub = T.alloc_ub((block_size,), "float32")
+                    tmp_ub = T.alloc_ub((block_size,), "float32")
+                    out_ub = T.alloc_ub((block_size,), "float32")
+
+                    T.copy(a[cid * block_size : cid * block_size + tail_size],
+                           a_ub[0:tail_size])
+                    T.copy(b[cid * block_size : cid * block_size + tail_size],
+                           b_ub[0:tail_size])
+                    T.copy(w[cid * block_size : cid * block_size + tail_size],
+                           w_ub[0:tail_size])
+
+                    T.vsub(b_ub, a_ub, tmp_ub)
+                    T.vmul(w_ub, tmp_ub, tmp_ub)
+                    T.vadd(a_ub, tmp_ub, out_ub)
+
+                    T.copy(out_ub[0:tail_size],
+                           out[cid * block_size : cid * block_size + tail_size])
 
         return main
 
@@ -108,12 +156,18 @@ class LerpTensorKernel(Kernel):
             npt = 4
         else:
             npt = 8
+        # NPU coreDim (block count) limit is 65535. Ensure
+        # ceildiv(N, block_size) <= 65535 by growing npt when N is large.
+        min_block_size = (self.N + _NPU_MAX_CORE_DIM - 1) // _NPU_MAX_CORE_DIM
+        block_size = 256 * npt
+        if block_size < min_block_size:
+            npt = max(npt, (min_block_size + 255) // 256)
         return {"threads": 256, "num_per_thread": npt}
 
     def forward(self, a: torch.Tensor, b: torch.Tensor,
                 w: torch.Tensor) -> torch.Tensor:
         prim_func = self.kernel(
-            threads=self.config["threads"],
-            npt=self.config["num_per_thread"],
+            threads_arg=self.config["threads"],
+            npt_arg=self.config["num_per_thread"],
         )
         return prim_func(a, b, w)

@@ -49,7 +49,7 @@ class LerpTensorOp(Op):
 
     @property
     def default_kernel_map(self) -> Dict[str, Kernel]:
-        return {"lerp_tensor_kernel": LerpTensorTorchKernel}
+        return {"lerp_tensor_kernel": LerpTensorKernel}
 
     def _get_kernel(self, N_total, dtype, device_index) -> Kernel:
         key = (N_total, dtype, device_index, self.tune)
