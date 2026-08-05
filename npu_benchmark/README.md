@@ -95,31 +95,49 @@ See `TopkSelectorOp` for a complete reference.
 - **LerpTensorOp** — tensor-weight linear interpolation `out = input + weight * (end - input)`.
 - **MishFwdOp** — element-wise Mish activation `y = x * tanh(softplus(x))`.
 
+### NPU tiling model
+
+NPU kernels use a **block_size** tiling parameter — the number of elements
+processed per NPU core (GM → UB copy, vector compute, UB → GM store).
+There is no GPU-style `threads` / `npt` split because the NPU has no SIMT
+thread model: each core executes vector instructions (`vexp`, `vadd`,
+`vmul`, `vsub`, `vdiv`, `vcast`) over a contiguous tile in Unified Buffer.
+
+The `block_size` is a runtime argument to the JIT kernel, chosen by
+`default_config` based on dtype and `N` (grown when needed to keep
+`ceildiv(N, block_size)` within the NPU coreDim limit of 65535).
+
 ### Kernel implementations
 
 | Kernel | File | Backend | Status |
 |--------|------|---------|--------|
 | `TopkSelectorTorchKernel` | `kernels/topk_selector_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.topk` |
-| `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang (CUDA/future NPU) | Reference — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not yet supported by the TileLang Ascend backend |
+| `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang (CUDA only) | Reference — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not supported by the TileLang Ascend backend |
 | `LerpTensorTorchKernel` | `kernels/lerp_tensor_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.lerp` |
-| `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (CUDA/future NPU) | Reference — uses register-fragment primitives (`alloc_fragment`, `T.copy`) not yet supported by the TileLang Ascend backend |
+| `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vcast`, `vsub`, `vmul`, `vadd`) with `block_size` tiling |
 | `MishTorchKernel` | `kernels/mish_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.tanh(softplus(x))` |
-| `MishKernel` | `kernels/mish.py` | TileLang (CUDA/future NPU) | Reference — uses register-fragment primitives (`alloc_fragment`, `T.copy`) not yet supported by the TileLang Ascend backend |
+| `MishKernel` | `kernels/mish.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`) with `block_size` tiling |
 
-The Op defaults to `TopkSelectorTorchKernel` so the framework runs end-to-end on NPU.
-To use the TileLang kernel (on a backend that supports it):
+The Op defaults to the Torch kernel so the framework runs end-to-end on any
+device.  To use the TileLang NPU kernel:
 
 ```python
-from kernels import TopkSelectorKernel
-op = TopkSelectorOp(topk=32, kernel_map={"topk_selector_kernel": TopkSelectorKernel})
+from kernels import MishKernel
+op = MishFwdOp(kernel_map={"mish_kernel": MishKernel})
 ```
 
 ### NPU backend limitation
 
-The TileLang Ascend backend (tilelang-mlir-fork v0.1.2) does not yet support:
-- `T.alloc_shared()` / `T.alloc_var()` / `T.alloc_local()` / `T.alloc_ub()` — segfault
-- `T.sync_threads()` / `T.block_barrier()` / `T.subblock_barrier()` — segfault
+The TileLang Ascend backend supports NPU vector primitives (`alloc_ub`,
+`vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`, `T.copy` GM↔UB) used by
+the elementwise kernels (`MishKernel`, `LerpTensorKernel`).
 
-Only `T.alloc_L1()` works for buffer allocation. Kernels that rely on the CUDA SIMT
-model (shared memory histograms, thread-level synchronization, intra-block atomics)
-cannot be compiled on NPU until these primitives are implemented.
+It does **not** yet support CUDA SIMT primitives:
+- `T.alloc_shared()` / `T.alloc_local()` — segfault
+- `T.sync_threads()` / `T.block_barrier()` / `T.subblock_barrier()` — segfault
+- `T.atomic_add()` on shared memory — unsupported
+
+Kernels that rely on the CUDA SIMT model (shared memory histograms,
+thread-level synchronization, intra-block atomics) — such as
+`TopkSelectorKernel` — cannot be compiled on NPU until these primitives
+are implemented.
