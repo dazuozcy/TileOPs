@@ -1,16 +1,17 @@
 """Tensor-weight lerp kernel — out = a + w * (b - a).
 
 Ported from TileOPs (tileops/kernels/elementwise.py::_make_lerp_tensor_kernel).
-The TileLang prim_func is backend-agnostic IR; the actual codegen target
-(NPU/CUDA) is determined by tilelang at JIT time based on the device of
-the input tensors.
+The TileLang prim_func targets the Ascend NPU backend (target="npuir")
+and uses NPU vector primitives (alloc_ub, vcast, vsub, vmul, vadd) on
+Unified Buffer (UB).
 
 The Op layer pre-broadcasts ``input`` / ``end`` / ``weight`` to the flat
 output shape so the kernel sees three contiguous 1-D tensors of size ``N``.
 
-Uses the register-fragment load -> compute -> fragment store strategy
-(alloc_fragment, T.copy, T.Parallel) so all three inputs and the output
-share the same vectorized memory access path.
+NPU tiling: each core processes ``block_size`` contiguous elements
+(GM -> UB copy, vector compute, UB -> GM store).  ``block_size`` is a
+runtime argument to the JIT kernel — there is no GPU-style
+``threads`` / ``npt`` split because the NPU has no SIMT thread model.
 """
 
 from __future__ import annotations
@@ -30,24 +31,22 @@ _NPU_MAX_CORE_DIM = 65535
 
 
 @functools.lru_cache(maxsize=32)
-def _make_lerp_tensor_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
+def _make_lerp_tensor_kernel(N, dtype, output_dtype=None):
     """Build Tensor-weight lerp kernel: out = a + weight * (b - a).
 
     Args:
         N: Number of elements (flat 1-D size, post-broadcast).
         dtype: Input dtype string (float16 / bfloat16 / float32).
         output_dtype: Output dtype string; defaults to ``dtype``.
-        threads: Threads per block (factory cache key; the runtime value is
-            passed to ``kernel`` via ``threads_arg``).
-        npt: Elements per thread (factory cache key; the runtime value is
-            passed to ``kernel`` via ``npt_arg``).
+
+    ``block_size`` (elements per NPU core) is passed at call time via
+    the ``block_size`` argument to the returned ``kernel`` callable —
+    it is not a factory parameter.
     """
     out_dtype = output_dtype or dtype
 
     @tilelang.jit(out_idx=[3], target="npuir")
-    def kernel(threads_arg, npt_arg):
-        block_size = threads_arg * npt_arg
-
+    def kernel(block_size):
         @T.prim_func
         def main(
             a: T.Tensor((N,), dtype),
@@ -144,30 +143,23 @@ class LerpTensorKernel(Kernel):
         self.dtype = dtype
         self.dtype_str = self.dtype_to_str(dtype)
 
-        cfg = self.default_config
-        self.kernel = _make_lerp_tensor_kernel(
-            self.N, self.dtype_str,
-            threads=cfg["threads"], npt=cfg["num_per_thread"])
+        self.kernel = _make_lerp_tensor_kernel(self.N, self.dtype_str)
         self.init_config(config, tune)
 
     @property
     def default_config(self) -> dict:
         if self.dtype == torch.float32:
-            npt = 4
+            block_size = 1024
         else:
-            npt = 8
+            block_size = 2048
         # NPU coreDim (block count) limit is 65535. Ensure
-        # ceildiv(N, block_size) <= 65535 by growing npt when N is large.
+        # ceildiv(N, block_size) <= 65535 by growing block_size when N is large.
         min_block_size = (self.N + _NPU_MAX_CORE_DIM - 1) // _NPU_MAX_CORE_DIM
-        block_size = 256 * npt
         if block_size < min_block_size:
-            npt = max(npt, (min_block_size + 255) // 256)
-        return {"threads": 256, "num_per_thread": npt}
+            block_size = ((min_block_size + 255) // 256) * 256
+        return {"block_size": block_size}
 
     def forward(self, a: torch.Tensor, b: torch.Tensor,
                 w: torch.Tensor) -> torch.Tensor:
-        prim_func = self.kernel(
-            threads_arg=self.config["threads"],
-            npt_arg=self.config["num_per_thread"],
-        )
+        prim_func = self.kernel(block_size=self.config["block_size"])
         return prim_func(a, b, w)

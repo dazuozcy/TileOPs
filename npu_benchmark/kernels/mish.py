@@ -1,15 +1,17 @@
 """Element-wise Mish activation kernel — y = x * tanh(softplus(x)).
 
 Ported from TileOPs (tileops/kernels/elementwise.py::MishFwdKernel).
-The TileLang prim_func is backend-agnostic IR; the actual codegen target
-(NPU/CUDA) is determined by tilelang at JIT time based on the device of
-the input tensors.
-
-Uses the register-fragment load -> compute -> fragment store strategy
-(alloc_fragment, T.copy, T.Parallel) for coalesced memory access.
+The TileLang prim_func targets the Ascend NPU backend (target="npuir")
+and uses NPU vector primitives (alloc_ub, vexp, vadd, vmul, vsub, vdiv,
+vcast) on Unified Buffer (UB).
 
 Computation: mish(x) = x * tanh(log(1 + exp(x))) computed in float32
 for numerical stability, then stored back to the input dtype.
+
+NPU tiling: each core processes ``block_size`` contiguous elements
+(GM -> UB copy, vector compute, UB -> GM store).  ``block_size`` is a
+runtime argument to the JIT kernel — there is no GPU-style
+``threads`` / ``npt`` split because the NPU has no SIMT thread model.
 """
 
 from __future__ import annotations
@@ -28,77 +30,30 @@ __all__ = ["MishKernel"]
 _NPU_MAX_CORE_DIM = 65535
 
 
-# @functools.lru_cache(maxsize=32)
-# def _make_mish_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
-#     """Build Mish kernel: y = x * tanh(softplus(x)).
-
-#     Args:
-#         N: Number of elements (flat 1-D size).
-#         dtype: Input dtype string (float16 / bfloat16 / float32).
-#         output_dtype: Output dtype string; defaults to ``dtype``.
-#         threads: Threads per block.
-#         npt: Elements per thread (vectorization factor).
-#     """
-#     out_dtype = output_dtype or dtype
-#     block_size = threads * npt
-
-#     @tilelang.jit(out_idx=[1])
-#     def kernel(threads_arg, npt_arg):
-#         @T.prim_func
-#         def main(
-#             x: T.Tensor((N,), dtype),
-#             y: T.Tensor((N,), out_dtype),
-#         ):
-#             with T.Kernel(T.ceildiv(N, block_size), threads=threads_arg) as bx:
-#                 x_reg = T.alloc_fragment((block_size,), dtype)
-#                 y_reg = T.alloc_fragment((block_size,), out_dtype)
-#                 T.copy(x[bx * block_size : (bx + 1) * block_size], x_reg)
-#                 for i, j in T.Parallel(threads_arg, npt_arg):
-#                     k = i * npt_arg + j
-#                     xv = x_reg[k]
-#                     one = T.cast(1.0, "float32")
-#                     y_reg[k] = xv * T.tanh(T.log(one + T.exp(xv)))
-#                 T.copy(y_reg, y[bx * block_size : (bx + 1) * block_size])
-
-#         return main
-
-#     return kernel
-
-
-# @functools.lru_cache(maxsize=32)
-def _make_mish_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
+@functools.lru_cache(maxsize=32)
+def _make_mish_kernel(N, dtype, output_dtype=None):
     """Build Mish kernel: y = x * tanh(softplus(x)).
 
     Args:
         N: Number of elements (flat 1-D size).
         dtype: Input dtype string (float16 / bfloat16 / float32).
         output_dtype: Output dtype string; defaults to ``dtype``.
-        threads: Threads per block (factory cache key; the runtime value is
-            passed to ``kernel`` via ``threads_arg``).
-        npt: Elements per thread (factory cache key; the runtime value is
-            passed to ``kernel`` via ``npt_arg``).
 
-    The @tilelang.jit(out_idx=[1]) / @T.prim_func / main(x, y) declarations
-    are preserved from the CUDA source. ``block_size`` is computed inside the
-    ``kernel`` body from ``threads_arg``/``npt_arg`` to guarantee consistency
-    (DESIGN.md §3.3 fix for the source's default-value mismatch).
+    ``block_size`` (elements per NPU core) is passed at call time via
+    the ``block_size`` argument to the returned ``kernel`` callable —
+    it is not a factory parameter.
     """
     out_dtype = output_dtype or dtype
 
     @tilelang.jit(out_idx=[1], target="npuir")
-    def kernel(threads_arg, npt_arg):
-        # Compute block_size inside the kernel body from the runtime args to
-        # guarantee consistency (DESIGN.md §3.3).
-        block_size = 1024  # threads_arg * npt_arg
-
+    def kernel(block_size):
         @T.prim_func
         def main(
             x: T.Tensor((N,), dtype),
             y: T.Tensor((N,), out_dtype),
         ):
             with T.Kernel(T.ceildiv(N, block_size), is_npu=True) as (cid, _):
-                # Tail-block handling: valid element count for this block
-                # (DESIGN.md §5.4 / §6.4, pattern from vec_add_1d.py).
+                # Tail-block handling: valid element count for this block.
                 tail_size = T.min(block_size, N - cid * block_size)
 
                 if dtype != "float32":
@@ -179,7 +134,6 @@ def _make_mish_kernel(N, dtype, output_dtype=None, threads=256, npt=8):
     return kernel
 
 
-
 class MishKernel(Kernel):
     """Kernel wrapper for element-wise Mish activation.
 
@@ -206,29 +160,22 @@ class MishKernel(Kernel):
         self.dtype = dtype
         self.dtype_str = self.dtype_to_str(dtype)
 
-        cfg = self.default_config
-        self.kernel = _make_mish_kernel(
-            self.N, self.dtype_str,
-            threads=cfg["threads"], npt=cfg["num_per_thread"])
+        self.kernel = _make_mish_kernel(self.N, self.dtype_str)
         self.init_config(config, tune)
 
     @property
     def default_config(self) -> dict:
         if self.dtype == torch.float32:
-            npt = 4
+            block_size = 1024
         else:
-            npt = 8
+            block_size = 2048
         # NPU coreDim (block count) limit is 65535. Ensure
-        # ceildiv(N, block_size) <= 65535 by growing npt when N is large.
+        # ceildiv(N, block_size) <= 65535 by growing block_size when N is large.
         min_block_size = (self.N + _NPU_MAX_CORE_DIM - 1) // _NPU_MAX_CORE_DIM
-        block_size = 256 * npt
         if block_size < min_block_size:
-            npt = max(npt, (min_block_size + 255) // 256)
-        return {"threads": 256, "num_per_thread": npt}
+            block_size = ((min_block_size + 255) // 256) * 256
+        return {"block_size": block_size}
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        prim_func = self.kernel(
-            threads_arg=self.config["threads"],
-            npt_arg=self.config["num_per_thread"],
-        )
+        prim_func = self.kernel(block_size=self.config["block_size"])
         return prim_func(x)
