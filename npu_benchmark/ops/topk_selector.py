@@ -4,7 +4,6 @@ import torch
 
 from kernels.kernel_base import Kernel
 from kernels.topk_selector import TopkSelectorKernel
-from kernels.topk_selector_torch import TopkSelectorTorchKernel
 from perf.formulas import topk_selector_roofline
 
 from .op_base import Op
@@ -18,10 +17,9 @@ class TopkSelectorOp(Op):
     Input:  index_score [batch, seq_len, seq_len_kv, kv_group]
     Output: indexes     [batch, seq_len, kv_group, topk]
 
-    By default uses ``TopkSelectorTorchKernel`` (PyTorch-based, NPU-ready).
-    Pass ``kernel_map={"topk_selector_kernel": TopkSelectorKernel}`` to use
-    the TileLang radix kernel (requires a backend that supports shared
-    memory + thread sync, e.g. CUDA or a future TileLang NPU backend).
+    Backed by the TileLang ``TopkSelectorKernel`` (radix top-k). Note
+    that this kernel uses CUDA SIMT primitives (shared memory, thread
+    sync, atomic_add) and requires a backend that supports them.
     """
 
     def __init__(self, topk: int,
@@ -42,7 +40,7 @@ class TopkSelectorOp(Op):
 
     @property
     def default_kernel_map(self) -> Dict[str, Kernel]:
-        return {"topk_selector_kernel": TopkSelectorTorchKernel}
+        return {"topk_selector_kernel": TopkSelectorKernel}
 
     def _get_kernel(self, batch, seq_len, seq_len_kv, kv_group, in_dtype,
                     device_index) -> Kernel:

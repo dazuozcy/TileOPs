@@ -4,7 +4,6 @@ import torch
 
 from kernels.kernel_base import Kernel
 from kernels.mish import MishKernel
-from kernels.mish_torch import MishTorchKernel
 from perf.formulas import mish_fwd_roofline
 
 from .op_base import Op
@@ -22,10 +21,7 @@ class MishFwdOp(Op):
     Input:  input [...]
     Output: output [...]  (same shape as input)
 
-    By default uses ``MishTorchKernel`` (PyTorch-based, NPU-ready).
-    Pass ``kernel_map={"mish_kernel": MishKernel}`` to use the TileLang
-    kernel (requires a backend that supports register fragments, e.g.
-    CUDA or a future TileLang NPU backend).
+    Backed by the TileLang ``MishKernel`` (NPU vector primitives).
     """
 
     _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
