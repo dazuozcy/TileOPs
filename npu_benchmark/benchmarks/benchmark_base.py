@@ -291,17 +291,19 @@ class BenchmarkReport:
         def _is_serializable(v: Any) -> bool:
             if isinstance(v, (int, float, bool, str, torch.dtype)):
                 return True
-            if isinstance(v, tuple):
+            if isinstance(v, (tuple, list)):
                 return all(_is_serializable(x) for x in v)
             return False
 
-        filtered_params = {
-            k: v for k, v in params.items()
-            if k not in ("test", "bm", "op", "inputs", "result", "result_bl",
-                         "baseline_fn", "tune")
-            and not k.startswith("_")
-            and _is_serializable(v)
-        }
+        _excluded = {"test", "bm", "op", "inputs", "result", "result_bl",
+                     "baseline_fn", "tune"}
+        filtered_params = {}
+        for k, v in params.items():
+            if k in _excluded or k.startswith("_") or not _is_serializable(v):
+                continue
+            if isinstance(v, list):
+                v = tuple(v)
+            filtered_params[k] = v
         entry = {
             "params": filtered_params,
             "result": result,
