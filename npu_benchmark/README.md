@@ -109,22 +109,14 @@ The `block_size` is a runtime argument to the JIT kernel, chosen by
 
 ### Kernel implementations
 
-| Kernel | File | Backend | Status |
-|--------|------|---------|--------|
-| `TopkSelectorTorchKernel` | `kernels/topk_selector_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.topk` |
-| `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang (CUDA only) | Reference — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not supported by the TileLang Ascend backend |
-| `LerpTensorTorchKernel` | `kernels/lerp_tensor_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.lerp` |
+| Kernel | File | Backend | Notes |
+|--------|------|---------|-------|
+| `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang | Radix top-k — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not supported by the TileLang Ascend backend |
 | `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vcast`, `vsub`, `vmul`, `vadd`) with `block_size` tiling |
-| `MishTorchKernel` | `kernels/mish_torch.py` | NPU/CUDA/CPU | **Default** — runs everywhere via `torch.tanh(softplus(x))` |
 | `MishKernel` | `kernels/mish.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`) with `block_size` tiling |
 
-The Op defaults to the Torch kernel so the framework runs end-to-end on any
-device.  To use the TileLang NPU kernel:
-
-```python
-from kernels import MishKernel
-op = MishFwdOp(kernel_map={"mish_kernel": MishKernel})
-```
+All ops are backed by their TileLang kernel. The Op's `kernel_map`
+parameter may still override the default kernel class.
 
 ### NPU backend limitation
 
