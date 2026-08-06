@@ -1,0 +1,82 @@
+# linear_attention.yaml -- manifest entries for linear-attention operators.
+#
+# Source of truth for linear-attention op interfaces. Loaded and merged with
+# other family files by manifest.__init__ at runtime.
+
+GatedDeltaNetFwdOp:
+  ref_api: "none"
+  family: linear_attention
+  status: scaffolded
+
+  signature:
+    inputs:
+      q: {dtype: "float16 | bfloat16 | float32", shape: "[B, H, S, DK]"}
+      k: {dtype: "same_as(q)", shape: "[B, H, S, DK]"}
+      v: {dtype: "same_as(q)", shape: "[B, H, S, DV]"}
+      g: {dtype: "same_as(q)", shape: "[B, H, S]"}
+      beta: {dtype: "same_as(q)", shape: "[B, H, S]"}
+    outputs:
+      o: {dtype: "same_as(q)", shape: "[B, H, S, DV]"}
+      S: {dtype: "float32", shape: "[B, H, NC + 1, DK, DV]"}
+      Aw: {dtype: "float32", shape: "[B, H, S, chunk_size]"}
+      Au: {dtype: "float32", shape: "[B, H, S, chunk_size]"}
+    params:
+      chunk_size: {type: int, default: 64}
+    shape_rules:
+    - "S % chunk_size == 0"
+    - "NC == S // chunk_size"
+
+  workloads:
+  - {q_shape: [1, 4, 256, 64], k_shape: [1, 4, 256, 64], v_shape: [1, 4, 256, 64], g_shape: [1, 4, 256], beta_shape: [1, 4, 256], chunk_size: 64, dtype: float16, label: "gdn-fwd-b1-h4-s256-d64-f16"}
+  - {q_shape: [1, 8, 512, 128], k_shape: [1, 8, 512, 128], v_shape: [1, 8, 512, 128], g_shape: [1, 8, 512], beta_shape: [1, 8, 512], chunk_size: 64, dtype: float16, label: "gdn-fwd-b1-h8-s512-d128-f16"}
+  - {q_shape: [1, 8, 512, 128], k_shape: [1, 8, 512, 128], v_shape: [1, 8, 512, 128], g_shape: [1, 8, 512], beta_shape: [1, 8, 512], chunk_size: 64, dtype: bfloat16, label: "gdn-fwd-b1-h8-s512-d128-bf16"}
+  - {q_shape: [2, 16, 1024, 128], k_shape: [2, 16, 1024, 128], v_shape: [2, 16, 1024, 128], g_shape: [2, 16, 1024], beta_shape: [2, 16, 1024], chunk_size: 64, dtype: float16, label: "gdn-fwd-b2-h16-s1024-d128-f16"}
+
+  roofline:
+    func: "perf.formulas.gated_deltanet_fwd_roofline"
+
+  source:
+    kernel: kernels/gated_deltanet.py
+    kernel_map:
+      gated_deltanet_fwd_kernel: GatedDeltaNetFwdKernel
+    op: ops/gated_deltanet.py
+    test: tests/ops/test_gated_deltanet.py
+    bench: benchmarks/ops/bench_gated_deltanet.py
+
+GLAFwdOp:
+  ref_api: "none"
+  family: linear_attention
+  status: scaffolded
+
+  signature:
+    inputs:
+      q: {dtype: "float16 | bfloat16 | float32", shape: "[B, S, H, DK]"}
+      k: {dtype: "same_as(q)", shape: "[B, S, H, DK]"}
+      v: {dtype: "same_as(q)", shape: "[B, S, H, DV]"}
+      g: {dtype: "same_as(q)", shape: "[B, S, H, DK]"}
+    outputs:
+      o: {dtype: "same_as(q)", shape: "[B, S, H, DV]"}
+      final_state: {dtype: "same_as(q)", shape: "[B, H, DK, DV]"}
+    params:
+      chunk_size: {type: int, default: 64}
+      scale: {type: float, default: -1.0}
+      output_final_state: {type: bool, default: true}
+    shape_rules:
+    - "S % chunk_size == 0"
+
+  workloads:
+  - {q_shape: [1, 256, 4, 64], k_shape: [1, 256, 4, 64], v_shape: [1, 256, 4, 64], g_shape: [1, 256, 4, 64], chunk_size: 64, scale: -1.0, dtype: float16, label: "gla-fwd-b1-s256-h4-d64-f16"}
+  - {q_shape: [1, 512, 8, 128], k_shape: [1, 512, 8, 128], v_shape: [1, 512, 8, 128], g_shape: [1, 512, 8, 128], chunk_size: 64, scale: -1.0, dtype: float16, label: "gla-fwd-b1-s512-h8-d128-f16"}
+  - {q_shape: [1, 512, 8, 128], k_shape: [1, 512, 8, 128], v_shape: [1, 512, 8, 128], g_shape: [1, 512, 8, 128], chunk_size: 64, scale: -1.0, dtype: bfloat16, label: "gla-fwd-b1-s512-h8-d128-bf16"}
+  - {q_shape: [2, 1024, 16, 128], k_shape: [2, 1024, 16, 128], v_shape: [2, 1024, 16, 128], g_shape: [2, 1024, 16, 128], chunk_size: 64, scale: -1.0, dtype: float16, label: "gla-fwd-b2-s1024-h16-d128-f16"}
+
+  roofline:
+    func: "perf.formulas.gla_fwd_roofline"
+
+  source:
+    kernel: kernels/gla.py
+    kernel_map:
+      gla_fwd_kernel: GLAFwdKernel
+    op: ops/gla.py
+    test: tests/ops/test_gla.py
+    bench: benchmarks/ops/bench_gla.py

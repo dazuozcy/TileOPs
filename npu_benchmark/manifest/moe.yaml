@@ -1,0 +1,45 @@
+# moe.yaml -- manifest entries for the 'moe' (Mixture-of-Experts) family.
+#
+# Source of truth for op interfaces in this family. Loaded and merged with
+# other family files by manifest.__init__ at runtime.
+
+MoeGroupedGemmNopadFwdOp:
+  # NT grouped GEMM for MoE without block_m-aligned padding.
+  # Accepts tight A[numel, K] inputs (no padding between experts),
+  # producing tight C[numel, N] outputs.
+  ref_api: "none"
+  family: moe
+  status: scaffolded
+
+  signature:
+    inputs:
+      a: {dtype: "float16 | bfloat16", shape: "[numel, K]"}
+      b: {dtype: "same_as(a)", shape: "[num_experts, N, K]"}
+      true_sizes: {dtype: "int32", shape: "[num_experts]"}
+      true_offsets: {dtype: "int32", shape: "[num_experts]"}
+    outputs:
+      c: {dtype: "same_as(a)", shape: "[numel, N]"}
+    params:
+      numel: {type: int}
+      num_experts: {type: int}
+      n: {type: int}
+      k: {type: int}
+    shape_rules:
+    - "c.shape == (numel, n)"
+
+  workloads:
+  - {numel: 128, num_experts: 4, n: 256, k: 512, dtype: bfloat16, label: "moe-gemm-bf16-small"}
+  - {numel: 512, num_experts: 8, n: 512, k: 1024, dtype: bfloat16, label: "moe-gemm-bf16-medium"}
+  - {numel: 512, num_experts: 8, n: 512, k: 1024, dtype: float16, label: "moe-gemm-f16-medium"}
+  - {numel: 2048, num_experts: 16, n: 1024, k: 2048, dtype: bfloat16, label: "moe-gemm-bf16-large"}
+
+  roofline:
+    func: "perf.formulas.moe_grouped_gemm_nopad_fwd_roofline"
+
+  source:
+    kernel: kernels/moe_grouped_gemm_nopad.py
+    kernel_map:
+      moe_grouped_gemm_kernel: MoeGroupedGemmNopadKernel
+    op: ops/moe_grouped_gemm_nopad.py
+    test: tests/ops/test_moe_grouped_gemm_nopad.py
+    bench: benchmarks/ops/bench_moe_grouped_gemm_nopad.py
