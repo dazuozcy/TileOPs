@@ -144,6 +144,10 @@ See `TopkSelectorOp` for a complete reference.
 - **LerpTensorOp** — tensor-weight linear interpolation `out = input + weight * (end - input)`.
 - **MishFwdOp** — element-wise Mish activation `y = x * tanh(softplus(x))`.
 - **LogSumExpFwdOp** — row-wise `logsumexp` reduction `y = log(sum(exp(x, dim)))` (NPU kernel placeholder).
+- **L1NormFwdOp** — L1 vector norm `y = sum(abs(x), dim)` (NPU kernel placeholder).
+- **L2NormFwdOp** — L2 vector norm `y = sqrt(sum(x^2, dim))` (NPU kernel placeholder).
+- **InfNormFwdOp** — infinity vector norm `y = max(abs(x), dim)` (NPU kernel placeholder).
+- **Conv2dFwdOp** — 2-D convolution `output = conv2d(input, weight)` (NPU kernel placeholder).
 
 ### NPU tiling model
 
@@ -164,7 +168,9 @@ The `block_size` is a runtime argument to the JIT kernel, chosen by
 | `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang | Radix top-k — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not supported by the TileLang Ascend backend |
 | `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vcast`, `vsub`, `vmul`, `vadd`) with `block_size` tiling |
 | `MishKernel` | `kernels/mish.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`) with `block_size` tiling |
-| `LogSumExpKernel` | `kernels/logsumexp.py` | TileLang (NPU) | PLACEHOLDER stub — `forward()` raises `NotImplementedError`; NPU reduction primitives not yet available |
+| `LogSumExpKernel` | `kernels/logsumexp.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until reduction body is implemented |
+| `VectorNormKernel` | `kernels/vector_norm.py` | TileLang (NPU) | STUB (empty body) — shared by L1/L2/Inf norm; compiles and runs; output values undefined |
+| `Conv2dKernel` | `kernels/conv2d.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until conv body is implemented |
 
 All ops are backed by their TileLang kernel. The Op's `kernel_map`
 parameter may still override the default kernel class.

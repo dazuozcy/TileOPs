@@ -3,6 +3,8 @@ from workloads.lerp_tensor import LerpTensorWorkload
 from workloads.logsumexp import LogSumExpWorkload
 from workloads.mish import MishWorkload
 from workloads.topk_selector import TopkSelectorWorkload
+from workloads.vector_norm import VectorNormWorkload
+from workloads.conv2d import Conv2dWorkload
 
 __all__ = [
     "WorkloadBase",
@@ -10,4 +12,6 @@ __all__ = [
     "LerpTensorWorkload",
     "MishWorkload",
     "LogSumExpWorkload",
+    "VectorNormWorkload",
+    "Conv2dWorkload",
 ]

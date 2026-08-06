@@ -33,3 +33,105 @@ LogSumExpFwdOp:
     op: ops/logsumexp.py
     test: tests/ops/test_logsumexp.py
     bench: benchmarks/ops/bench_logsumexp.py
+
+L1NormFwdOp:
+  ref_api: "torch.linalg.vector_norm"
+  family: reduction
+  status: scaffolded
+
+  signature:
+    inputs:
+      x: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+    outputs:
+      output: {dtype: "same_as(x)"}
+    params:
+      dim: {type: "int", default: -1}
+      keepdim: {type: bool, default: false}
+    shape_rules:
+    - "-x.ndim <= dim < x.ndim"
+    - "output.ndim == (x.ndim if keepdim else x.ndim - 1)"
+
+  workloads:
+  - {x_shape: [2048, 4096], dtype: float16, dim: -1, keepdim: false, label: "l1-2048x4096-f16"}
+  - {x_shape: [2048, 4096], dtype: float32, dim: -1, keepdim: false, label: "l1-2048x4096-f32"}
+  - {x_shape: [64, 32768], dtype: bfloat16, dim: -1, keepdim: false, label: "l1-64x32768-bf16"}
+  - {x_shape: [4, 128, 4096], dtype: float16, dim: -1, keepdim: false, label: "l1-3d-f16"}
+
+  roofline:
+    func: "perf.formulas.l1_norm_fwd_roofline"
+
+  source:
+    kernel: kernels/vector_norm.py
+    kernel_map:
+      vector_norm: VectorNormKernel
+    op: ops/vector_norm.py
+    test: tests/ops/test_vector_norm.py
+    bench: benchmarks/ops/bench_vector_norm.py
+
+L2NormFwdOp:
+  ref_api: "torch.linalg.vector_norm"
+  family: reduction
+  status: scaffolded
+
+  signature:
+    inputs:
+      x: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+    outputs:
+      output: {dtype: "same_as(x)"}
+    params:
+      dim: {type: "int", default: -1}
+      keepdim: {type: bool, default: false}
+    shape_rules:
+    - "-x.ndim <= dim < x.ndim"
+    - "output.ndim == (x.ndim if keepdim else x.ndim - 1)"
+
+  workloads:
+  - {x_shape: [2048, 4096], dtype: float16, dim: -1, keepdim: false, label: "l2-2048x4096-f16"}
+  - {x_shape: [2048, 4096], dtype: float32, dim: -1, keepdim: false, label: "l2-2048x4096-f32"}
+  - {x_shape: [64, 32768], dtype: bfloat16, dim: -1, keepdim: false, label: "l2-64x32768-bf16"}
+  - {x_shape: [4, 128, 4096], dtype: float16, dim: -1, keepdim: false, label: "l2-3d-f16"}
+
+  roofline:
+    func: "perf.formulas.l2_norm_fwd_roofline"
+
+  source:
+    kernel: kernels/vector_norm.py
+    kernel_map:
+      vector_norm: VectorNormKernel
+    op: ops/vector_norm.py
+    test: tests/ops/test_vector_norm.py
+    bench: benchmarks/ops/bench_vector_norm.py
+
+InfNormFwdOp:
+  ref_api: "torch.linalg.vector_norm"
+  family: reduction
+  status: scaffolded
+
+  signature:
+    inputs:
+      x: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+    outputs:
+      output: {dtype: "same_as(x)"}
+    params:
+      dim: {type: "int", default: -1}
+      keepdim: {type: bool, default: false}
+    shape_rules:
+    - "-x.ndim <= dim < x.ndim"
+    - "output.ndim == (x.ndim if keepdim else x.ndim - 1)"
+
+  workloads:
+  - {x_shape: [2048, 4096], dtype: float16, dim: -1, keepdim: false, label: "inf-2048x4096-f16"}
+  - {x_shape: [2048, 4096], dtype: float32, dim: -1, keepdim: false, label: "inf-2048x4096-f32"}
+  - {x_shape: [64, 32768], dtype: bfloat16, dim: -1, keepdim: false, label: "inf-64x32768-bf16"}
+  - {x_shape: [4, 128, 4096], dtype: float16, dim: -1, keepdim: false, label: "inf-3d-f16"}
+
+  roofline:
+    func: "perf.formulas.inf_norm_fwd_roofline"
+
+  source:
+    kernel: kernels/vector_norm.py
+    kernel_map:
+      vector_norm: VectorNormKernel
+    op: ops/vector_norm.py
+    test: tests/ops/test_vector_norm.py
+    bench: benchmarks/ops/bench_vector_norm.py

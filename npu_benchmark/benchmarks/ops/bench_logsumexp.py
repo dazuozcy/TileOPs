@@ -4,10 +4,9 @@ Workload shapes and dtypes come from the manifest; roofline FLOP and byte
 counts come from the op's ``eval_roofline()`` via
 :class:`ManifestBenchmark`.
 
-NOTE: The NPU ``LogSumExpKernel`` is currently a placeholder stub
-(``forward()`` raises ``NotImplementedError``).  This benchmark is marked
-``skip`` until the kernel is implemented — remove the marker when the
-real NPU reduction kernel lands.
+The NPU ``LogSumExpKernel`` is currently a stub (empty body).  The
+kernel compiles and runs (producing undefined output) so the benchmark
+timing / roofline flow executes normally.
 """
 
 from __future__ import annotations
@@ -32,9 +31,6 @@ _LOGSUMEXP_PARAMS = workload_field_params(
 )
 
 
-@pytest.mark.skip(
-    reason="LogSumExpKernel NPU implementation is a placeholder",
-)
 @pytest.mark.parametrize(
     "x_shape, dtype, dim, keepdim",
     _LOGSUMEXP_PARAMS,
