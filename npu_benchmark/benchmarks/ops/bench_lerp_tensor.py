@@ -27,20 +27,12 @@ _LERP_TENSOR_PARAMS = workload_field_params(
 )
 
 
-class LerpTensorBenchBaseline(LerpTensorWorkload):
-    """Adds baseline ref_program for benchmark profiling."""
-
-    def ref_program(self, input: torch.Tensor, end: torch.Tensor,
-                    weight: torch.Tensor) -> torch.Tensor:
-        return torch.lerp(input, end, weight)
-
-
 @pytest.mark.parametrize(
     "input_shape, dtype",
     _LERP_TENSOR_PARAMS,
 )
 def test_lerp_tensor_bench(input_shape, dtype: torch.dtype) -> None:
-    test = LerpTensorBenchBaseline(input_shape, dtype)
+    test = LerpTensorWorkload(input_shape, dtype)
     inputs = test.gen_inputs()
 
     op = LerpTensorOp(tune=_TUNE)
@@ -48,9 +40,6 @@ def test_lerp_tensor_bench(input_shape, dtype: torch.dtype) -> None:
 
     result = bm.profile(op, *inputs)
     BenchmarkReport.record(op, locals(), result, tag="kernel")
-
-    result_bl = bm.profile(test.ref_program, *inputs)
-    BenchmarkReport.record(op, locals(), result_bl, tag="torch")
 
 
 if __name__ == "__main__":

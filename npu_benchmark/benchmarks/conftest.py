@@ -47,13 +47,10 @@ def pytest_runtest_call(item):
             return
 
         kernel_entry = None
-        baseline_entries = []
         for e in entries:
             if e["tag"].startswith("kernel"):
-                if kernel_entry is None:
-                    kernel_entry = e
-            else:
-                baseline_entries.append(e)
+                kernel_entry = e
+                break
 
         if kernel_entry:
             item.user_properties.append(("op", kernel_entry["op"]))
@@ -67,31 +64,6 @@ def pytest_runtest_call(item):
             bw = kernel_entry.get("bandwidth_tbs")
             if bw is not None:
                 item.user_properties.append(("kernel_bandwidth_tbs", f"{bw:.2f}"))
-
-        for idx, be in enumerate(baseline_entries):
-            tag = be["tag"]
-            bl_latency = be.get("latency_ms", 0)
-            bl_tflops = be.get("tflops")
-
-            if idx == 0:
-                item.user_properties.append(("baseline_tag", tag))
-                item.user_properties.append(("baseline_latency_ms", f"{bl_latency:.4f}"))
-                if bl_tflops is not None:
-                    item.user_properties.append(("baseline_tflops", f"{bl_tflops:.2f}"))
-                if kernel_entry:
-                    tl = kernel_entry.get("latency_ms", 0)
-                    if tl > 0 and bl_latency > 0:
-                        item.user_properties.append(("baseline_ratio",
-                                                     f"{bl_latency / tl:.4f}"))
-
-            item.user_properties.append((f"{tag}_latency_ms", f"{bl_latency:.4f}"))
-            if bl_tflops is not None:
-                item.user_properties.append((f"{tag}_tflops", f"{bl_tflops:.2f}"))
-            if kernel_entry:
-                tl = kernel_entry.get("latency_ms", 0)
-                if tl > 0 and bl_latency > 0:
-                    item.user_properties.append((f"{tag}_ratio",
-                                                 f"{bl_latency / tl:.4f}"))
     finally:
         _bench_results.entries = []
         _release_cache()

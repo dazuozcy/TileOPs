@@ -49,6 +49,54 @@ bench test (parametrize from manifest)
 NPU timing uses `torch.npu.Event(enable_timing=True)` (via `utils.device.timing_event()`).
 Set `NPU_BENCHMARK_FORCE_CUDA=1` to use CUDA events for local NVIDIA development.
 
+### msprof op profiling
+
+Event-based timing includes host-side launch overhead and scheduling
+latency.  For **kernel-only** latency, switch to `msprof op` mode:
+
+```bash
+make bench-msprof
+# or:
+NPU_BENCH_TIMING=msprof python -m pytest benchmarks/
+```
+
+This runs each kernel via:
+
+```
+msprof op --kernel-name=<auto> --output=<tmp> --launch-count=50 --warm-up=10 \
+    python <generated_script>.py
+```
+
+The generated script reconstructs the Op + Workload in a fresh process,
+launches the kernel `warm_up + launch_count` times, then exits.  msprof
+collects per-launch data and writes `OpBasicInfo_*.csv`; the framework
+parses the `Task Duration(us)` column and reports the **median** in
+`profile_run.log` (shown as `timing: msprof` in the report table).
+
+**How it works:**
+1. The Op is called once in-process to bind shape/dtype for roofline
+   calculation.
+2. A standalone Python script is generated that reconstructs the Op
+   (with `tune=False`, i.e. default config) and Workload.
+3. `msprof op` wraps the script as a subprocess.
+4. `OpBasicInfo_*.csv` is parsed for `Task Duration(us)`.
+
+**Kernel name auto-detection:** each `Kernel` subclass declares a
+`prof_name` class attribute (default `"main"`, matching the
+`@T.prim_func def main(...)` convention).  Override via
+`NPU_BENCH_MSPROF_KERNEL_NAME`.
+
+**Configuration env vars:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NPU_BENCH_TIMING` | `events` | `msprof` to switch profiling method |
+| `NPU_BENCH_MSPROF_LAUNCH_COUNT` | `10` | Timed launches collected |
+| `NPU_BENCH_MSPROF_WARM_UP` | `5` | Warm-up launches skipped |
+| `NPU_BENCH_MSPROF_KERNEL_NAME` | auto | Override `--kernel-name` |
+| `NPU_BENCH_MSPROF_OUTPUT` | temp dir | Fixed output directory |
+| `NPU_BENCH_MSPROF_KEEP_OUTPUT` | `1` | `0` to auto-delete temp dir |
+
 ## Usage
 
 ### Install
@@ -62,8 +110,9 @@ pip install -r requirements.txt
 ### Run benchmarks
 
 ```bash
-make bench           # all workloads
+make bench           # all workloads (event timing)
 make bench-smoke     # first workload per op (fast sanity)
+make bench-msprof    # all workloads (msprof op timing, kernel-only latency)
 ```
 
 ### Run correctness tests
