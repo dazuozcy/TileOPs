@@ -63,8 +63,22 @@ def mish_fwd_roofline(op) -> tuple[int, int]:
     return 4 * n_total, 2 * n_total * elem_bytes
 
 
+def logsumexp_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``LogSumExpFwdOp`` (``torch.logsumexp``).
+
+    Per row of length ``N``: max (N) + sub (N) + exp (N) + sum (N) +
+    log (≈1) ≈ 4N flops.  Reads ``M * N`` input elements, writes ``M``
+    output elements.
+    """
+    M = int(op.M)
+    N = int(op.N)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    return 4 * M * N, (M * N + M) * elem_bytes
+
+
 ROOFLINE_REGISTRY: dict[str, Callable] = {
     "topk_selector_roofline": topk_selector_roofline,
     "lerp_tensor_roofline": lerp_tensor_roofline,
     "mish_fwd_roofline": mish_fwd_roofline,
+    "logsumexp_fwd_roofline": logsumexp_fwd_roofline,
 }

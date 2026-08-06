@@ -143,6 +143,7 @@ See `TopkSelectorOp` for a complete reference.
 - **TopkSelectorOp** — radix-based top-k index selection over `[B, S, S_kv, G]`.
 - **LerpTensorOp** — tensor-weight linear interpolation `out = input + weight * (end - input)`.
 - **MishFwdOp** — element-wise Mish activation `y = x * tanh(softplus(x))`.
+- **LogSumExpFwdOp** — row-wise `logsumexp` reduction `y = log(sum(exp(x, dim)))` (NPU kernel placeholder).
 
 ### NPU tiling model
 
@@ -163,6 +164,7 @@ The `block_size` is a runtime argument to the JIT kernel, chosen by
 | `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang | Radix top-k — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not supported by the TileLang Ascend backend |
 | `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vcast`, `vsub`, `vmul`, `vadd`) with `block_size` tiling |
 | `MishKernel` | `kernels/mish.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`) with `block_size` tiling |
+| `LogSumExpKernel` | `kernels/logsumexp.py` | TileLang (NPU) | PLACEHOLDER stub — `forward()` raises `NotImplementedError`; NPU reduction primitives not yet available |
 
 All ops are backed by their TileLang kernel. The Op's `kernel_map`
 parameter may still override the default kernel class.

@@ -1,0 +1,35 @@
+LogSumExpFwdOp:
+  ref_api: "torch.logsumexp"
+  family: reduction
+  status: scaffolded
+
+  signature:
+    inputs:
+      x: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+    outputs:
+      output: {dtype: "same_as(x)"}
+    params:
+      dim: {type: "int", default: -1}
+      keepdim: {type: bool, default: false}
+    shape_rules:
+    - "-x.ndim <= dim < x.ndim"
+    - "output.ndim == (x.ndim if keepdim else x.ndim - 1)"
+    - "keepdim implies output.shape[dim] == 1"
+    - "not keepdim implies output.shape == [x.shape[i] for i in range(x.ndim) if i != dim]"
+
+  workloads:
+  - {x_shape: [32, 4096], dtype: float16, dim: -1, keepdim: false, label: "lse-32x4096-f16"}
+  - {x_shape: [32, 4096], dtype: float32, dim: -1, keepdim: false, label: "lse-32x4096-f32"}
+  - {x_shape: [4, 102400], dtype: float16, dim: -1, keepdim: false, label: "lse-lm-head-f16"}
+  - {x_shape: [32, 32768], dtype: bfloat16, dim: -1, keepdim: false, label: "lse-32x32768-bf16"}
+
+  roofline:
+    func: "perf.formulas.logsumexp_fwd_roofline"
+
+  source:
+    kernel: kernels/logsumexp.py
+    kernel_map:
+      logsumexp_fwd: LogSumExpKernel
+    op: ops/logsumexp.py
+    test: tests/ops/test_logsumexp.py
+    bench: benchmarks/ops/bench_logsumexp.py
