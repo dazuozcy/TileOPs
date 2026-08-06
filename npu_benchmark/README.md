@@ -151,6 +151,10 @@ See `TopkSelectorOp` for a complete reference.
 - **ArgmaxFwdOp** — row-wise `argmax` reduction `y = argmax(x, dim)` (int64 indices) (NPU kernel placeholder).
 - **AvgPool2dFwdOp** — 2-D average pooling `output = avg_pool2d(input, kernel_size, ...)` (NPU kernel placeholder).
 - **MaxPool3dFwdOp** — 3-D max pooling `output = max_pool3d(input, kernel_size, ...)` (NPU kernel placeholder).
+- **GatedDeltaNetFwdOp** — Gated DeltaNet chunked forward `o, S, Aw, Au = fwd(q, k, v, g, beta)` (NPU kernel placeholder).
+- **GLAFwdOp** — Gated Linear Attention chunked forward `o, final_state = fwd(q, k, v, g)` (NPU kernel placeholder).
+- **SSDChunkScanFwdOp** — Mamba-2 SSD fused chunk scan `y = scan(x, cb, dA, C, prev_states, dt)` (NPU kernel placeholder).
+- **MoeGroupedGemmNopadFwdOp** — MoE grouped NT GEMM (no-pad) `c = gemm(a, b, true_sizes, true_offsets)` (NPU kernel placeholder).
 
 ### NPU tiling model
 
@@ -177,6 +181,10 @@ The `block_size` is a runtime argument to the JIT kernel, chosen by
 | `ArgmaxKernel` | `kernels/argmax.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until reduction body is implemented |
 | `AvgPool2dKernel` | `kernels/avg_pool2d.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until pooling body is implemented |
 | `MaxPool3dKernel` | `kernels/max_pool3d.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until pooling body is implemented |
+| `GatedDeltaNetFwdKernel` | `kernels/gated_deltanet.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until delta-rule forward body is implemented |
+| `GLAFwdKernel` | `kernels/gla.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until GLA forward body is implemented |
+| `SSDChunkScanFwdKernel` | `kernels/ssd_chunk_scan.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until SSD scan body is implemented |
+| `MoeGroupedGemmNopadKernel` | `kernels/moe_grouped_gemm_nopad.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until grouped GEMM body is implemented |
 
 All ops are backed by their TileLang kernel. The Op's `kernel_map`
 parameter may still override the default kernel class.

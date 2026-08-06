@@ -189,6 +189,94 @@ def max_pool3d_fwd_roofline(op) -> tuple[int, int]:
     return int(flops), int(nbytes)
 
 
+def gated_deltanet_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``GatedDeltaNetFwdOp``.
+
+    FLOPs: 4 * B * H * S * DK * DV (state update + query-state matmul
+    per token, each involving ~2*DK*DV flops).
+    Bytes: read q, k, v, g, beta + write o, S, Aw, Au.
+    """
+    B = int(op.batch)
+    H = int(op.heads)
+    S = int(op.seq_len)
+    DK = int(op.dim_k)
+    DV = int(op.dim_v)
+    chunk_size = int(op.chunk_size)
+    NC = S // chunk_size
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    flops = 4 * B * H * S * DK * DV
+    nbytes = B * H * S * (2 * DK + DV + 2) * elem_bytes  # q, k, v, g, beta
+    nbytes += B * H * S * DV * elem_bytes                  # o
+    nbytes += B * H * (NC + 1) * DK * DV * 4               # S (float32)
+    nbytes += 2 * B * H * S * chunk_size * 4               # Aw, Au (float32)
+    return int(flops), int(nbytes)
+
+
+def gla_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``GLAFwdOp`` (Gated Linear Attention forward).
+
+    FLOPs: 4 * B * S * H * DK * DV (state update + query-state matmul).
+    Bytes: read q, k, v, g + write o, final_state.
+    """
+    B = int(op.batch)
+    S = int(op.seq_len)
+    H = int(op.heads)
+    DK = int(op.dim_k)
+    DV = int(op.dim_v)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    flops = 4 * B * S * H * DK * DV
+    nbytes = B * S * H * (2 * DK + DV + DK) * elem_bytes  # q, k, v, g
+    nbytes += B * S * H * DV * elem_bytes                   # o
+    nbytes += B * H * DK * DV * elem_bytes                  # final_state
+    return int(flops), int(nbytes)
+
+
+def ssd_chunk_scan_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``SSDChunkScanFwdOp``.
+
+    FLOPs: intra-chunk (cb @ dt @ x) + inter-chunk (C @ prev_states).
+    Bytes: read x, cb, dA_cumsum, C, prev_states, dt + write y.
+    """
+    B = int(op.batch)
+    NC = int(op.num_chunks)
+    Q = int(op.chunk_len)
+    H = int(op.n_heads)
+    P = int(op.d_head)
+    N = int(op.d_state)
+    G = int(op.n_groups)
+    S = NC * Q
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float16"))
+    flops = 2 * B * NC * Q * Q * P + 2 * B * NC * H * P * N
+    nbytes = (
+        B * S * H * P * elem_bytes          # x
+        + B * NC * G * Q * Q * elem_bytes   # cb
+        + B * H * NC * Q * 4               # dA_cumsum (float32)
+        + B * S * G * N * elem_bytes        # C
+        + B * NC * H * P * N * 4           # prev_states (float32)
+        + B * H * NC * Q * elem_bytes       # dt
+        + B * S * H * P * 4                # y (float32)
+    )
+    return int(flops), int(nbytes)
+
+
+def moe_grouped_gemm_nopad_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``MoeGroupedGemmNopadFwdOp`` (NT grouped GEMM).
+
+    FLOPs: 2 * numel * N * K (one MAC = 2 flops).
+    Bytes: read a [numel, K] + b [E, N, K] + true_sizes + true_offsets
+           + write c [numel, N].
+    """
+    numel = int(op.numel)
+    num_experts = int(op.num_experts)
+    n = int(op.n)
+    k = int(op.k)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "bfloat16"))
+    flops = 2 * numel * n * k
+    nbytes = (numel * k + num_experts * n * k + numel * n) * elem_bytes
+    nbytes += 2 * num_experts * 4  # true_sizes + true_offsets (int32)
+    return int(flops), int(nbytes)
+
+
 ROOFLINE_REGISTRY: dict[str, Callable] = {
     "topk_selector_roofline": topk_selector_roofline,
     "lerp_tensor_roofline": lerp_tensor_roofline,
@@ -201,4 +289,8 @@ ROOFLINE_REGISTRY: dict[str, Callable] = {
     "argmax_fwd_roofline": argmax_fwd_roofline,
     "avg_pool2d_fwd_roofline": avg_pool2d_fwd_roofline,
     "max_pool3d_fwd_roofline": max_pool3d_fwd_roofline,
+    "gated_deltanet_fwd_roofline": gated_deltanet_fwd_roofline,
+    "gla_fwd_roofline": gla_fwd_roofline,
+    "ssd_chunk_scan_fwd_roofline": ssd_chunk_scan_fwd_roofline,
+    "moe_grouped_gemm_nopad_fwd_roofline": moe_grouped_gemm_nopad_fwd_roofline,
 }

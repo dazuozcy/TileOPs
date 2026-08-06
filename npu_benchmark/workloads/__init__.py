@@ -8,6 +8,10 @@ from workloads.conv2d import Conv2dWorkload
 from workloads.argmax import ArgmaxWorkload
 from workloads.avg_pool2d import AvgPool2dWorkload
 from workloads.max_pool3d import MaxPool3dWorkload
+from workloads.gated_deltanet import GatedDeltaNetFwdWorkload
+from workloads.gla import GLAFwdWorkload
+from workloads.ssd_chunk_scan import SSDChunkScanFwdWorkload
+from workloads.moe_grouped_gemm_nopad import MoeGroupedGemmNopadFwdWorkload
 
 __all__ = [
     "WorkloadBase",
@@ -20,4 +24,8 @@ __all__ = [
     "ArgmaxWorkload",
     "AvgPool2dWorkload",
     "MaxPool3dWorkload",
+    "GatedDeltaNetFwdWorkload",
+    "GLAFwdWorkload",
+    "SSDChunkScanFwdWorkload",
+    "MoeGroupedGemmNopadFwdWorkload",
 ]
