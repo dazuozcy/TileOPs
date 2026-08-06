@@ -148,6 +148,9 @@ See `TopkSelectorOp` for a complete reference.
 - **L2NormFwdOp** — L2 vector norm `y = sqrt(sum(x^2, dim))` (NPU kernel placeholder).
 - **InfNormFwdOp** — infinity vector norm `y = max(abs(x), dim)` (NPU kernel placeholder).
 - **Conv2dFwdOp** — 2-D convolution `output = conv2d(input, weight)` (NPU kernel placeholder).
+- **ArgmaxFwdOp** — row-wise `argmax` reduction `y = argmax(x, dim)` (int64 indices) (NPU kernel placeholder).
+- **AvgPool2dFwdOp** — 2-D average pooling `output = avg_pool2d(input, kernel_size, ...)` (NPU kernel placeholder).
+- **MaxPool3dFwdOp** — 3-D max pooling `output = max_pool3d(input, kernel_size, ...)` (NPU kernel placeholder).
 
 ### NPU tiling model
 
@@ -171,6 +174,9 @@ The `block_size` is a runtime argument to the JIT kernel, chosen by
 | `LogSumExpKernel` | `kernels/logsumexp.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until reduction body is implemented |
 | `VectorNormKernel` | `kernels/vector_norm.py` | TileLang (NPU) | STUB (empty body) — shared by L1/L2/Inf norm; compiles and runs; output values undefined |
 | `Conv2dKernel` | `kernels/conv2d.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until conv body is implemented |
+| `ArgmaxKernel` | `kernels/argmax.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until reduction body is implemented |
+| `AvgPool2dKernel` | `kernels/avg_pool2d.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until pooling body is implemented |
+| `MaxPool3dKernel` | `kernels/max_pool3d.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until pooling body is implemented |
 
 All ops are backed by their TileLang kernel. The Op's `kernel_map`
 parameter may still override the default kernel class.

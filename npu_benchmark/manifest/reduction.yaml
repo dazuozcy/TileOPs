@@ -135,3 +135,38 @@ InfNormFwdOp:
     op: ops/vector_norm.py
     test: tests/ops/test_vector_norm.py
     bench: benchmarks/ops/bench_vector_norm.py
+
+ArgmaxFwdOp:
+  ref_api: "torch.argmax"
+  family: reduction
+  status: scaffolded
+
+  signature:
+    inputs:
+      x: {dtype: "float16 | bfloat16 | float32", shape: "[...]"}
+    outputs:
+      output: {dtype: "int64", shape: "x.shape with dim reduced"}
+    params:
+      dim: {type: "int", default: -1}
+      keepdim: {type: bool, default: false}
+    shape_rules:
+    - "-x.ndim <= dim < x.ndim"
+    - "output.ndim == (x.ndim if keepdim else x.ndim - 1)"
+    - "output.dtype == int64"
+
+  workloads:
+  - {x_shape: [32, 4096], dtype: float16, dim: -1, keepdim: false, label: "argmax-32x4096-f16"}
+  - {x_shape: [32, 4096], dtype: float32, dim: -1, keepdim: false, label: "argmax-32x4096-f32"}
+  - {x_shape: [4, 128, 4096], dtype: float16, dim: -1, keepdim: false, label: "argmax-3d-f16"}
+  - {x_shape: [64, 32768], dtype: bfloat16, dim: -1, keepdim: false, label: "argmax-64x32768-bf16"}
+
+  roofline:
+    func: "perf.formulas.argmax_fwd_roofline"
+
+  source:
+    kernel: kernels/argmax.py
+    kernel_map:
+      argmax_fwd: ArgmaxKernel
+    op: ops/argmax.py
+    test: tests/ops/test_argmax.py
+    bench: benchmarks/ops/bench_argmax.py

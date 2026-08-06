@@ -136,6 +136,59 @@ def conv2d_fwd_roofline(op) -> tuple[int, int]:
     return int(flops), int(nbytes)
 
 
+def argmax_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``ArgmaxFwdOp`` (``torch.argmax``).
+
+    Per row of length ``N``: N comparisons to locate the max.  Reads
+    ``M * N`` input elements, writes ``M`` int64 index outputs.
+    """
+    M = int(op.M)
+    N = int(op.N)
+    in_elem = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    out_elem = _dtype_itemsize(getattr(op, "out_dtype", "int64"))
+    return M * N, (M * N * in_elem + M * out_elem)
+
+
+def avg_pool2d_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``AvgPool2dFwdOp`` (``torch.nn.functional.avg_pool2d``).
+
+    Per output element: ``kH * kW`` adds + 1 div = ``kH*kW + 1`` flops.
+    Reads input (N*C*H*W) + writes output (N*C*out_H*out_W).
+    """
+    n = int(op.n)
+    c = int(op.c)
+    h = int(op.h)
+    w = int(op.w)
+    kh, kw = op.kernel_size
+    out_h = int(op.out_h)
+    out_w = int(op.out_w)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    flops = n * c * out_h * out_w * (kh * kw + 1)
+    nbytes = (n * c * h * w + n * c * out_h * out_w) * elem_bytes
+    return int(flops), int(nbytes)
+
+
+def max_pool3d_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``MaxPool3dFwdOp`` (``torch.nn.functional.max_pool3d``).
+
+    Per output element: ``kD * kH * kW`` comparisons.  Reads input
+    (N*C*D*H*W) + writes output (N*C*out_D*out_H*out_W).
+    """
+    n = int(op.n)
+    c = int(op.c)
+    d = int(op.d)
+    h = int(op.h)
+    w = int(op.w)
+    kd, kh, kw = op.kernel_size
+    out_d = int(op.out_d)
+    out_h = int(op.out_h)
+    out_w = int(op.out_w)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    flops = n * c * out_d * out_h * out_w * kd * kh * kw
+    nbytes = (n * c * d * h * w + n * c * out_d * out_h * out_w) * elem_bytes
+    return int(flops), int(nbytes)
+
+
 ROOFLINE_REGISTRY: dict[str, Callable] = {
     "topk_selector_roofline": topk_selector_roofline,
     "lerp_tensor_roofline": lerp_tensor_roofline,
@@ -145,4 +198,7 @@ ROOFLINE_REGISTRY: dict[str, Callable] = {
     "l2_norm_fwd_roofline": l2_norm_fwd_roofline,
     "inf_norm_fwd_roofline": inf_norm_fwd_roofline,
     "conv2d_fwd_roofline": conv2d_fwd_roofline,
+    "argmax_fwd_roofline": argmax_fwd_roofline,
+    "avg_pool2d_fwd_roofline": avg_pool2d_fwd_roofline,
+    "max_pool3d_fwd_roofline": max_pool3d_fwd_roofline,
 }
