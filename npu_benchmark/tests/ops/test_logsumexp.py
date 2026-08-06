@@ -3,10 +3,10 @@
 Compares kernel output against ``torch.logsumexp`` with element-wise
 allclose.  Tolerances are dtype-aware (see ``tests.tolerances``).
 
-NOTE: The NPU ``LogSumExpKernel`` is currently a placeholder stub
-(``forward()`` raises ``NotImplementedError``).  This test is marked
-``skip`` until the kernel is implemented — remove the marker when the
-real NPU reduction kernel lands.
+NOTE: The NPU ``LogSumExpKernel`` is currently a stub (empty body).
+The kernel compiles and runs but produces undefined output values, so
+correctness tests are expected to fail until the real reduction body
+is implemented.
 """
 
 from __future__ import annotations
@@ -26,9 +26,6 @@ _PARAMS = workload_field_params(
 )
 
 
-@pytest.mark.skip(
-    reason="LogSumExpKernel NPU implementation is a placeholder",
-)
 @pytest.mark.parametrize(
     "x_shape, dtype, dim, keepdim",
     _PARAMS,

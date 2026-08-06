@@ -76,9 +76,73 @@ def logsumexp_fwd_roofline(op) -> tuple[int, int]:
     return 4 * M * N, (M * N + M) * elem_bytes
 
 
+def l1_norm_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``L1NormFwdOp`` (``torch.linalg.vector_norm(ord=1)``).
+
+    Per row of length ``N``: abs (N) + add (N) = 2N flops.
+    Reads ``M * N`` input elements, writes ``M`` output elements.
+    """
+    M = int(op.M)
+    N = int(op.N)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    return 2 * M * N, (M * N + M) * elem_bytes
+
+
+def l2_norm_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``L2NormFwdOp`` (``torch.linalg.vector_norm(ord=2)``).
+
+    Per row of length ``N``: square (N) + add (N) + sqrt (1) = 2N + 1 flops.
+    Reads ``M * N`` input elements, writes ``M`` output elements.
+    """
+    M = int(op.M)
+    N = int(op.N)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    return 2 * M * N + M, (M * N + M) * elem_bytes
+
+
+def inf_norm_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``InfNormFwdOp`` (``torch.linalg.vector_norm(ord=inf)``).
+
+    Per row of length ``N``: abs (N) + max (N) = 2N flops.
+    Reads ``M * N`` input elements, writes ``M`` output elements.
+    """
+    M = int(op.M)
+    N = int(op.N)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    return 2 * M * N, (M * N + M) * elem_bytes
+
+
+def conv2d_fwd_roofline(op) -> tuple[int, int]:
+    """Roofline for ``Conv2dFwdOp`` (``torch.nn.functional.conv2d``).
+
+    FLOPs: 2 * N * C_out * out_H * out_W * C_in_g * kH * kW (one MAC =
+    2 flops: multiply + add).
+    Bytes: read input (N*C_in*H*W) + read weight (C_out*C_in_g*kH*kW) +
+    write output (N*C_out*out_H*out_W).
+    """
+    n = int(op.n)
+    c_in = int(op.c_in)
+    h = int(op.h)
+    w = int(op.w)
+    c_out = int(op.c_out)
+    c_in_g = int(op.c_in_g)
+    kh, kw = op.kernel_size
+    out_h = int(op.out_h)
+    out_w = int(op.out_w)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float32"))
+    flops = 2 * n * c_out * out_h * out_w * c_in_g * kh * kw
+    nbytes = (n * c_in * h * w + c_out * c_in_g * kh * kw
+              + n * c_out * out_h * out_w) * elem_bytes
+    return int(flops), int(nbytes)
+
+
 ROOFLINE_REGISTRY: dict[str, Callable] = {
     "topk_selector_roofline": topk_selector_roofline,
     "lerp_tensor_roofline": lerp_tensor_roofline,
     "mish_fwd_roofline": mish_fwd_roofline,
     "logsumexp_fwd_roofline": logsumexp_fwd_roofline,
+    "l1_norm_fwd_roofline": l1_norm_fwd_roofline,
+    "l2_norm_fwd_roofline": l2_norm_fwd_roofline,
+    "inf_norm_fwd_roofline": inf_norm_fwd_roofline,
+    "conv2d_fwd_roofline": conv2d_fwd_roofline,
 }

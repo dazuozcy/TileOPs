@@ -1,7 +1,8 @@
-"""LogSumExp forward kernel (NPU, target=npuir) — STUB (empty body).
+"""Vector norm kernel (NPU, target=npuir) — STUB (empty body).
 
-Computes ``y[m] = log(sum(exp(x[m, :])))`` over the last dimension of a
-2-D ``(M, N)`` tensor, producing a 1-D ``(M,)`` output.
+Computes ``y[m] = ||x[m, :]||_p`` over the last dimension of a 2-D
+``(M, N)`` tensor, producing a 1-D ``(M,)`` output.  Supports L1, L2,
+and infinity norms via the ``op_kind`` parameter.
 
 Status: **STUB** — the prim_func compiles and runs on NPU, but the kernel
 body is empty (``pass``).  The output tensor is allocated with the correct
@@ -10,7 +11,7 @@ Benchmark / JIT-compile / roofline flows execute normally.
 
 To implement:
   1. Replace the ``pass`` in the ``T.Kernel`` block with the real
-     reduction body (online logsumexp: running max + rescaled sum).
+     reduction body.
   2. Everything else (factory, wrapper, Op dispatch) stays as-is.
 """
 
@@ -23,18 +24,19 @@ import torch
 
 from kernels.kernel_base import Kernel
 
-__all__ = ["LogSumExpKernel"]
+__all__ = ["VectorNormKernel"]
 
 _NPU_MAX_CORE_DIM = 65535
 
 
 @functools.lru_cache(maxsize=32)
-def _make_logsumexp_kernel(M, N, dtype, output_dtype=None):
-    """Build LogSumExp kernel (STUB — empty body).
+def _make_vector_norm_kernel(M, N, op_kind, dtype, output_dtype=None):
+    """Build vector-norm kernel (STUB — empty body).
 
     Args:
         M: Number of rows (product of non-reduction dims).
         N: Reduction dimension size.
+        op_kind: One of ``"l1"``, ``"l2"``, ``"inf"``.
         dtype: Input dtype string (float16 / bfloat16 / float32).
         output_dtype: Output dtype string; defaults to ``dtype``.
 
@@ -51,13 +53,10 @@ def _make_logsumexp_kernel(M, N, dtype, output_dtype=None):
             y: T.Tensor((M,), out_dtype),
         ):
             with T.Kernel(T.ceildiv(M, block_size), is_npu=True) as (cid, _):
-                # TODO: online logsumexp per row:
-                #   running_max = -inf, running_sum = 0
-                #   for tile in N:
-                #     tile_max = vmax(x[m, off:off+tile])
-                #     running_sum = running_sum * exp(running_max - tile_max) + sum(exp(x_ub - tile_max))
-                #     running_max = max(running_max, tile_max)
-                #   y[m] = running_max + log(running_sum)
+                # TODO: per-row vector norm reduction.
+                # op_kind == "l1":  y[m] = sum(abs(x[m, :]))
+                # op_kind == "l2":  y[m] = sqrt(sum(x[m, :] * x[m, :]))
+                # op_kind == "inf": y[m] = max(abs(x[m, :]))
                 pass
 
         return main
@@ -65,11 +64,11 @@ def _make_logsumexp_kernel(M, N, dtype, output_dtype=None):
     return kernel
 
 
-class LogSumExpKernel(Kernel):
-    """LogSumExp forward kernel wrapper (NPU STUB — empty body).
+class VectorNormKernel(Kernel):
+    """Vector norm kernel wrapper (NPU STUB — empty body).
 
-    Implements ``y = logsumexp(x, dim=-1)`` over the last dimension of a
-    2-D ``(M, N)`` tensor, producing a 1-D ``(M,)`` output.
+    Implements ``y[m] = ||x[m, :]||_p`` over the last dimension of a 2-D
+    ``(M, N)`` tensor, producing a 1-D ``(M,)`` output.
 
     The Op layer flattens the input to ``(M, N)`` (moving the reduction
     dim to the last axis) before dispatching this kernel.
@@ -80,30 +79,47 @@ class LogSumExpKernel(Kernel):
     vector reduce, UB → GM store).  There is no GPU-style ``threads`` /
     ``npt`` split because the NPU has no SIMT thread model.
 
+    Args:
+        M: Number of rows (product of non-reduction dims).
+        N: Reduction dimension size.
+        op_kind: One of ``"l1"``, ``"l2"``, ``"inf"``.
+        dtype: Data type (float16, bfloat16, or float32).
+        config: Optional kernel configuration dict.
+        tune: Whether to autotune (default False).
+
     Status: **STUB** — kernel body is empty; output values are undefined.
     """
 
     supported_archs: Optional[list[int]] = None
     SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+    _VALID_KINDS = ("l1", "l2", "inf")
 
     def __init__(self,
                  M: int,
                  N: int,
+                 op_kind: str,
                  dtype: torch.dtype,
                  config: Optional[dict] = None,
                  tune: bool = False):
         super().__init__()
+        if op_kind not in self._VALID_KINDS:
+            raise ValueError(
+                f"VectorNormKernel op_kind must be one of {self._VALID_KINDS}, "
+                f"got {op_kind!r}"
+            )
         if dtype not in self.SUPPORTED_DTYPES:
             supported = ", ".join(str(dt) for dt in self.SUPPORTED_DTYPES)
             raise ValueError(
-                f"LogSumExpKernel only supports dtypes [{supported}], got {dtype}"
+                f"VectorNormKernel only supports dtypes [{supported}], got {dtype}"
             )
         self.M = M
         self.N = N
+        self.op_kind = op_kind
         self.dtype = dtype
         self.dtype_str = self.dtype_to_str(dtype)
 
-        self.kernel = _make_logsumexp_kernel(self.M, self.N, self.dtype_str)
+        self.kernel = _make_vector_norm_kernel(
+            self.M, self.N, self.op_kind, self.dtype_str)
         self.init_config(config, tune)
 
     @property
