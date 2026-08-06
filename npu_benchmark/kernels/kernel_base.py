@@ -21,6 +21,7 @@ class Kernel(ABC):
     autotune_configs: Optional[list[dict]] = None
     supported_archs: Optional[list[int]] = None
     kernel: Callable
+    prof_name: str = "main"
 
     def __init__(self, *args, **kwargs) -> None:
         self.config = {}

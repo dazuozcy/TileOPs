@@ -189,8 +189,46 @@ class BenchmarkBase(Generic[W], ABC):
         raise NotImplementedError
 
     def profile(self, functor: Any, *inputs: Any) -> dict:
+        timing = os.getenv("NPU_BENCH_TIMING", "events")
+        if timing == "msprof" and hasattr(functor, "_kernel_cache"):
+            return self.profile_msprof(functor, *inputs)
         with torch.no_grad():
             latency = bench_kernel(functor, args=inputs)
+        return self._build_result(latency)
+
+    def profile_msprof(self, functor: Any, *inputs: Any) -> dict:
+        """Profile using ``msprof op`` for hardware-level kernel latency.
+
+        Generates a launch script, runs ``msprof op
+        --kernel-name=xxx --output=xxx --launch-count=N --warm-up=M``,
+        and parses ``OpBasicInfo_*.csv`` for ``Task Duration(us)``.
+
+        The Op is called once in-process to bind shape/dtype state for
+        ``eval_roofline()``; the timed launches run in a fresh subprocess
+        with ``tune=False`` (default config).
+        """
+        from benchmarks.msprof import bench_kernel_msprof
+
+        with torch.no_grad():
+            functor(*inputs)
+        synchronize()
+
+        kernel_name = "main"
+        if functor.kernel is not None:
+            kernel_name = getattr(type(functor.kernel), "prof_name", "main")
+        elif functor.kernel_map:
+            kernel_class = next(iter(functor.kernel_map.values()))
+            kernel_name = getattr(kernel_class, "prof_name", "main")
+        kernel_name = os.getenv("NPU_BENCH_MSPROF_KERNEL_NAME", kernel_name)
+
+        latency = bench_kernel_msprof(
+            op=functor,
+            workload=self.workload,
+            kernel_name=kernel_name,
+        )
+
+        _bench_meta.timing = "msprof"
+        _bench_meta.inputs_cloned = True
         return self._build_result(latency)
 
     def _build_result(self, latency: float) -> dict:
@@ -383,7 +421,7 @@ class BenchmarkReport:
 
         with open(path, "w") as f:
             f.write("\n".join(lines))
-        print(f"Benchmark report saved to {path}")
+        print(f"\nBenchmark report saved to {path}")
 
     @staticmethod
     def clear() -> None:

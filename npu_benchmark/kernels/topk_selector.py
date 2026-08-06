@@ -220,6 +220,7 @@ class TopkSelectorKernel(Kernel):
     """
 
     supported_archs: Optional[list[int]] = None
+    prof_name = "_topk_selector_kernel_main"
 
     def __init__(self,
                  batch: int,

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 import torch
-import torch.nn.functional as F
 
 from benchmarks.benchmark_base import (
     BenchmarkReport,
@@ -28,19 +27,12 @@ _MISH_PARAMS = workload_field_params(
 )
 
 
-class MishBenchBaseline(MishWorkload):
-    """Adds baseline ref_program for benchmark profiling."""
-
-    def ref_program(self, input: torch.Tensor) -> torch.Tensor:
-        return input * torch.tanh(F.softplus(input))
-
-
 @pytest.mark.parametrize(
     "input_shape, dtype",
     _MISH_PARAMS,
 )
 def test_mish_bench(input_shape, dtype: torch.dtype) -> None:
-    test = MishBenchBaseline(input_shape, dtype)
+    test = MishWorkload(input_shape, dtype)
     inputs = test.gen_inputs()
 
     op = MishFwdOp(tune=_TUNE)
@@ -48,9 +40,6 @@ def test_mish_bench(input_shape, dtype: torch.dtype) -> None:
 
     result = bm.profile(op, *inputs)
     BenchmarkReport.record(op, locals(), result, tag="kernel")
-
-    # result_bl = bm.profile(test.ref_program, *inputs)
-    # BenchmarkReport.record(op, locals(), result_bl, tag="torch")
 
 
 if __name__ == "__main__":
