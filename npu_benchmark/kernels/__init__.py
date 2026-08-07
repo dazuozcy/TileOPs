@@ -12,6 +12,7 @@ from .gated_deltanet import GatedDeltaNetFwdKernel
 from .gla import GLAFwdKernel
 from .ssd_chunk_scan import SSDChunkScanFwdKernel
 from .moe_grouped_gemm_nopad import MoeGroupedGemmNopadKernel
+from .deepseek_mla_decode import MLADecodeKernel
 
 __all__ = [
     "Kernel",
@@ -28,4 +29,5 @@ __all__ = [
     "GLAFwdKernel",
     "SSDChunkScanFwdKernel",
     "MoeGroupedGemmNopadKernel",
+    "MLADecodeKernel",
 ]

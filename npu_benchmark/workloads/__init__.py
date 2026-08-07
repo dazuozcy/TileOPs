@@ -12,6 +12,7 @@ from workloads.gated_deltanet import GatedDeltaNetFwdWorkload
 from workloads.gla import GLAFwdWorkload
 from workloads.ssd_chunk_scan import SSDChunkScanFwdWorkload
 from workloads.moe_grouped_gemm_nopad import MoeGroupedGemmNopadFwdWorkload
+from workloads.deepseek_mla_decode import MlaDecodeWorkload
 
 __all__ = [
     "WorkloadBase",
@@ -28,4 +29,5 @@ __all__ = [
     "GLAFwdWorkload",
     "SSDChunkScanFwdWorkload",
     "MoeGroupedGemmNopadFwdWorkload",
+    "MlaDecodeWorkload",
 ]

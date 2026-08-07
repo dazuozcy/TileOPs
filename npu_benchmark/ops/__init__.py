@@ -12,6 +12,7 @@ from .gated_deltanet import GatedDeltaNetFwdOp
 from .gla import GLAFwdOp
 from .ssd_chunk_scan import SSDChunkScanFwdOp
 from .moe_grouped_gemm_nopad import MoeGroupedGemmNopadFwdOp
+from .deepseek_mla_decode import MultiHeadLatentAttentionDecodeWithKVCacheFwdOp
 
 __all__ = [
     "Op",
@@ -30,4 +31,5 @@ __all__ = [
     "GLAFwdOp",
     "SSDChunkScanFwdOp",
     "MoeGroupedGemmNopadFwdOp",
+    "MultiHeadLatentAttentionDecodeWithKVCacheFwdOp",
 ]

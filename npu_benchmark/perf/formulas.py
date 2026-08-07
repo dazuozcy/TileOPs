@@ -277,6 +277,29 @@ def moe_grouped_gemm_nopad_fwd_roofline(op) -> tuple[int, int]:
     return int(flops), int(nbytes)
 
 
+def deepseek_mla_decode_roofline(op) -> tuple[int, int]:
+    """Roofline for ``MultiHeadLatentAttentionDecodeWithKVCacheFwdOp``.
+
+    FLOPs: 2 * B * H * S_kv * (2*D + pe_dim)  (score = q@k^T + q_pe@k_pe^T
+    is 2*B*H*S_kv*(D+pe_dim); output = softmax@k is 2*B*H*S_kv*D).
+    Bytes: read q, q_pe, k, k_pe + write o.
+    """
+    B = int(op.batch)
+    H = int(op.heads)
+    H_kv = int(op.heads_kv)
+    S_kv = int(op.seqlen_kv)
+    D = int(op.dim)
+    pe_dim = int(op.pe_dim)
+    elem_bytes = _dtype_itemsize(getattr(op, "dtype", "float16"))
+    flops = 2 * B * H * S_kv * (2 * D + pe_dim)
+    nbytes = (
+        B * H * (D + pe_dim)                   # q, q_pe
+        + B * S_kv * H_kv * (D + pe_dim)       # k, k_pe
+        + B * H * D                            # o
+    ) * elem_bytes
+    return int(flops), int(nbytes)
+
+
 ROOFLINE_REGISTRY: dict[str, Callable] = {
     "topk_selector_roofline": topk_selector_roofline,
     "lerp_tensor_roofline": lerp_tensor_roofline,
@@ -293,4 +316,5 @@ ROOFLINE_REGISTRY: dict[str, Callable] = {
     "gla_fwd_roofline": gla_fwd_roofline,
     "ssd_chunk_scan_fwd_roofline": ssd_chunk_scan_fwd_roofline,
     "moe_grouped_gemm_nopad_fwd_roofline": moe_grouped_gemm_nopad_fwd_roofline,
+    "deepseek_mla_decode_roofline": deepseek_mla_decode_roofline,
 }
