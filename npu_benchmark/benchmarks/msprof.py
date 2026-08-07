@@ -119,7 +119,7 @@ def _find_duration_column(header: list[str]) -> Optional[str]:
 
 def _parse_op_basic_info(output_dir: str) -> list[float]:
     """Parse ``OpBasicInfo_*.csv`` for ``Task Duration(us)`` values."""
-    pattern = os.path.join(output_dir, "**", "OpBasicInfo_*.csv")
+    pattern = os.path.join(output_dir, "**", "OpBasicInfo*.csv")
     files = sorted(glob.glob(pattern, recursive=True))
     if not files:
         raise FileNotFoundError(
@@ -191,7 +191,7 @@ def bench_kernel_msprof(
     script = _generate_launch_script(
         op_class.__module__, op_class.__name__, op_kwargs,
         workload_class.__module__, workload_class.__name__, workload_args,
-        warm_up, launch_count,
+        0, 1,
     )
     script_path = os.path.join(output_dir, "launch_kernel.py")
     with open(script_path, "w") as f:
@@ -203,6 +203,10 @@ def bench_kernel_msprof(
         f"--output={output_dir}",
         f"--launch-count={launch_count}",
         f"--warm-up={warm_up}",
+        # These two lines below avoid excessive profiling time caused by parsing
+        # too much data; here we only care about latency, not the detailed specifics.
+        f"--aic-metrics=TimelineDetail",
+        f"--dump=off",
         sys.executable, script_path,
     ]
     _logger.info("Running msprof: %s", " ".join(cmd))
