@@ -140,7 +140,7 @@ See `TopkSelectorOp` for a complete reference.
 
 ## Current ops
 
-- **TopkSelectorOp** — radix-based top-k index selection over `[B, S, S_kv, G]`.
+- **TopkSelectorOp** — min-heap top-k index selection over `[B, S, S_kv, G]`.
 - **LerpTensorOp** — tensor-weight linear interpolation `out = input + weight * (end - input)`.
 - **MishFwdOp** — element-wise Mish activation `y = x * tanh(softplus(x))`.
 - **LogSumExpFwdOp** — row-wise `logsumexp` reduction `y = log(sum(exp(x, dim)))` (NPU kernel placeholder).
@@ -172,7 +172,7 @@ The `block_size` is a runtime argument to the JIT kernel, chosen by
 
 | Kernel | File | Backend | Notes |
 |--------|------|---------|-------|
-| `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang | Radix top-k — uses CUDA SIMT primitives (`alloc_shared`, `sync_threads`, `atomic_add`) not supported by the TileLang Ascend backend |
+| `TopkSelectorKernel` | `kernels/topk_selector.py` | TileLang (NPU) | NPU-native — min-heap top-k via `npuir` target (`TILELANG_ASCEND_MODE=Developer`); `T.alloc_shared` buffers + `T.copy` GM→UB loading + `T.serial` heapify (up/down); no SIMT sync/atomics |
 | `LerpTensorKernel` | `kernels/lerp_tensor.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vcast`, `vsub`, `vmul`, `vadd`) with `block_size` tiling |
 | `MishKernel` | `kernels/mish.py` | TileLang (NPU) | NPU-native — uses `alloc_ub` + vector primitives (`vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`) with `block_size` tiling |
 | `LogSumExpKernel` | `kernels/logsumexp.py` | TileLang (NPU) | STUB (empty body) — compiles and runs; output values undefined until reduction body is implemented |
@@ -195,12 +195,14 @@ The TileLang Ascend backend supports NPU vector primitives (`alloc_ub`,
 `vexp`, `vadd`, `vmul`, `vsub`, `vdiv`, `vcast`, `T.copy` GM↔UB) used by
 the elementwise kernels (`MishKernel`, `LerpTensorKernel`).
 
-It does **not** yet support CUDA SIMT primitives:
+The standard Ascend backend does **not** yet support CUDA SIMT primitives:
 - `T.alloc_shared()` / `T.alloc_local()` — segfault
 - `T.sync_threads()` / `T.block_barrier()` / `T.subblock_barrier()` — segfault
 - `T.atomic_add()` on shared memory — unsupported
 
 Kernels that rely on the CUDA SIMT model (shared memory histograms,
-thread-level synchronization, intra-block atomics) — such as
-`TopkSelectorKernel` — cannot be compiled on NPU until these primitives
-are implemented.
+thread-level synchronization, intra-block atomics) cannot be compiled on
+the standard Ascend backend. `TopkSelectorKernel` was ported to the
+`npuir` target (`TILELANG_ASCEND_MODE=Developer`), which supports
+`T.alloc_shared` + `T.copy` + `T.serial` for sequential per-core
+processing, avoiding SIMT sync/atomics entirely.

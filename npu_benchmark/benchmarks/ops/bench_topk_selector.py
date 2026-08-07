@@ -19,7 +19,7 @@ from manifest import load_workloads
 from ops import TopkSelectorOp
 from workloads.topk_selector import TopkSelectorWorkload
 
-_TUNE = True
+_TUNE = False
 _TOPK_SELECTOR_OP = "TopkSelectorOp"
 _TOPK_SELECTOR_PARAMS = workload_field_params(
     load_workloads(_TOPK_SELECTOR_OP),
