@@ -1,0 +1,45 @@
+# attention.yaml -- manifest entries for attention operators.
+#
+# Source of truth for attention op interfaces. Loaded and merged with
+# other family files by manifest.__init__ at runtime.
+
+MultiHeadLatentAttentionDecodeWithKVCacheFwdOp:
+  ref_api: "none"
+  family: attention
+  status: scaffolded
+
+  signature:
+    inputs:
+      q: {dtype: "float16 | bfloat16", shape: "[B, H, D]"}
+      q_pe: {dtype: "same_as(q)", shape: "[B, H, pe_dim]"}
+      k: {dtype: "same_as(q)", shape: "[B, N_kv, H_kv, D]"}
+      k_pe: {dtype: "same_as(q)", shape: "[B, N_kv, H_kv, pe_dim]"}
+    outputs:
+      o: {dtype: "same_as(q)", shape: "[B, H, D]"}
+    params:
+      pe_dim: {type: int}
+    shape_rules:
+      - "q.shape == (B, H, D)"
+      - "q_pe.shape == (B, H, pe_dim)"
+      - "k.shape == (B, N_kv, H_kv, D)"
+      - "k_pe.shape == (B, N_kv, H_kv, pe_dim)"
+      - "o.shape == (B, H, D)"
+
+  workloads:
+  - {q_shape: [32, 128, 128], q_pe_shape: [32, 128, 64], kv_shape: [32, 4096, 1, 128], k_pe_shape: [32, 4096, 1, 64], pe_dim: 64, dtype: float16, label: "deepseek-v2-4k-f16"}
+  - {q_shape: [32, 128, 128], q_pe_shape: [32, 128, 64], kv_shape: [32, 4096, 1, 128], k_pe_shape: [32, 4096, 1, 64], pe_dim: 64, dtype: bfloat16, label: "deepseek-v2-4k-bf16"}
+  - {q_shape: [8, 128, 128], q_pe_shape: [8, 128, 64], kv_shape: [8, 32768, 1, 128], k_pe_shape: [8, 32768, 1, 64], pe_dim: 64, dtype: float16, label: "deepseek-v2-32k-f16"}
+  - {q_shape: [8, 128, 128], q_pe_shape: [8, 128, 64], kv_shape: [8, 32768, 1, 128], k_pe_shape: [8, 32768, 1, 64], pe_dim: 64, dtype: bfloat16, label: "deepseek-v2-32k-bf16"}
+  - {q_shape: [16, 128, 128], q_pe_shape: [16, 128, 64], kv_shape: [16, 4096, 1, 128], k_pe_shape: [16, 4096, 1, 64], pe_dim: 64, dtype: bfloat16, label: "deepseek-v3-4k-bf16"}
+  - {q_shape: [4, 128, 128], q_pe_shape: [4, 128, 64], kv_shape: [4, 32768, 1, 128], k_pe_shape: [4, 32768, 1, 64], pe_dim: 64, dtype: bfloat16, label: "deepseek-v3-32k-bf16"}
+
+  roofline:
+    func: "perf.formulas.deepseek_mla_decode_roofline"
+
+  source:
+    kernel: kernels/deepseek_mla_decode.py
+    kernel_map:
+      mla_decode_kernel: MLADecodeKernel
+    op: ops/deepseek_mla_decode.py
+    test: tests/ops/test_deepseek_mla_decode.py
+    bench: benchmarks/ops/bench_deepseek_mla_decode.py
